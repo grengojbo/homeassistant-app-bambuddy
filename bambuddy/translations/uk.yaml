@@ -1,0 +1,19 @@
+configuration:
+  debug:
+    name: Налагодження
+    description: Вмикає докладні повідомлення в журналі
+  trusted_frame_origins:
+    name: Дозволені адреси джерел
+    description: "Формат: http:// або https://, далі IP-адреса чи домен, за потреби з :ПОРТОМ. Приклади: http://192.168.1.1:8123 | https://192.168.1.1 | http://homeassistant.local:8123 | https://my-domain.com — докладніше: https://wiki.bambuddy.cool/getting-started/docker/#environment-variables"
+  enable_share:
+    name: Доступ до теки share
+    description: "Підключає теку Home Assistant /share до BamBuddy. Потрібно, щоб використовувати мережеві сховища (NAS, USB, SMB/NFS), додані через Налаштування → Система → Зберігання, як зовнішні теки у файловому менеджері BamBuddy. Доступ на читання й запис — режим лише для читання налаштовується окремо для кожної теки всередині BamBuddy."
+  enable_media:
+    name: Доступ до теки media
+    description: "Підключає теку Home Assistant /media до BamBuddy. Потрібно, щоб використовувати мережеві сховища типу «медіа», додані через Налаштування → Система → Зберігання, як зовнішні теки у файловому менеджері BamBuddy. Доступ на читання й запис — режим лише для читання налаштовується окремо для кожної теки всередині BamBuddy."
+  use_system_trust_store:
+    name: Використовувати системне сховище довіри
+    description: "Увімкніть, щоб використовувати власний сертифікат CA для HTTPS-з'єднань (наприклад, з Home Assistant із самопідписаним сертифікатом). Покладіть сертифікат CA (файл .crt) у теку addon_configs (File Editor → addon_configs → [слаг вашого додатка]) і вкажіть ім'я файлу в полі нижче."
+  certfile:
+    name: Ім'я файлу сертифіката CA
+    description: "Ім'я файлу сертифіката CA (.crt), розміщеного в теці addon_configs. Типове значення: custom_ca.crt"
