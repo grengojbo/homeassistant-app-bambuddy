@@ -26,7 +26,7 @@
 
 | Коміт | Що | Доля |
 |---|---|---|
-| `acf7fc6` | `iproute2` в обох Dockerfile | **Прийнято в апстрім**: `Spegeli/homeassistant-app-bambuddy#5` (merged). Гілка `fix/iproute2-for-ip-aliases` більше не потрібна. |
+| `acf7fc6` | `iproute2` в обох Dockerfile | **Прийнято в апстрім**: `Spegeli/homeassistant-app-bambuddy#5` (merged 04.09.2026). Гілку PR видалено 26.09.2026. |
 | `bbcf500` | `image:` в `config.yaml`, `arch: [aarch64]`, `build.yml`, `repository.json` | Тільки для форку, в апстрім не пропонувати |
 | `3c4f538` | `bambuddy/translations/uk.yaml` | Можна запропонувати в апстрім окремою гілкою |
 
