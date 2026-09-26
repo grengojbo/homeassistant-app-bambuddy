@@ -21,6 +21,10 @@ jobs:
       cancel-in-progress: true
     permissions:
       contents: write
+      # Needed by the final step to dispatch build.yml. A push made with
+      # GITHUB_TOKEN never triggers another workflow, so the image build has
+      # to be requested explicitly; workflow_dispatch is exempt from that rule.
+      actions: write
 
     steps:
       - name: Checkout
@@ -88,6 +92,14 @@ jobs:
           git add bambuddy/Dockerfile bambuddy/config.yaml bambuddy/CHANGELOG.md
           git commit -m "chore: update BamBuddy ${{ steps.get_current.outputs.current }} -> ${{ steps.get_version.outputs.latest }}"
           git push
+
+      - name: Build the image for the new version
+        if: steps.get_version.outputs.latest != '' && steps.get_version.outputs.latest != steps.get_current.outputs.current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run build.yml --ref main
+          echo "Requested build of ${{ steps.get_version.outputs.latest }}"
 
   # ============================================================
   # DAILY
