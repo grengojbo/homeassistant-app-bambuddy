@@ -91,7 +91,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add bambuddy/Dockerfile bambuddy/config.yaml bambuddy/CHANGELOG.md
           git commit -m "chore: update BamBuddy ${{ steps.get_current.outputs.current }} -> ${{ steps.get_version.outputs.latest }}"
-          git push
+          # update-daily pushes to the same branch in parallel; rebase onto it and retry.
+          for i in 1 2 3; do
+            git pull --rebase && git push && break
+            [ "$i" = 3 ] && exit 1
+            sleep 5
+          done
 
       - name: Build the image for the new version
         if: steps.get_version.outputs.latest != '' && steps.get_version.outputs.latest != steps.get_current.outputs.current
@@ -215,4 +220,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add bambuddy-daily/config.yaml bambuddy-daily/CHANGELOG.md
           git diff --staged --quiet || git commit -m "chore: update BamBuddy Daily ${{ steps.get_current.outputs.current }} -> ${{ steps.get_digest.outputs.version }}"
-          git push
+          # update-stable pushes to the same branch in parallel; rebase onto it and retry.
+          for i in 1 2 3; do
+            git pull --rebase && git push && break
+            [ "$i" = 3 ] && exit 1
+            sleep 5
+          done

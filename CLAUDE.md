@@ -56,6 +56,11 @@ version`, який робить `gh workflow run build.yml`. PAT не потрі
 
 Job потребує `permissions: actions: write` — без нього виклик `gh workflow run` отримає `403`.
 
+Обидва job (`Update STABLE` і `Update DAILY`) пушать у `main` паралельно. 02.10.2026 реліз 1.2.5.7
+і daily вийшли в одну годину, пуш STABLE програв (`cannot lock ref`), і образ з'явився лише з
+наступним запуском, через ~5 год. Тому пуш в обох job — це `git pull --rebase && git push` до
+трьох спроб. Конфліктів не буде: job змінюють різні теки.
+
 Вручну збірку й далі можна запустити будь-коли:
 
 ```bash
