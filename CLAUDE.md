@@ -2,7 +2,7 @@
 
 Форк репозиторію add-on BamBuddy. Мета: **збирати образ у GitHub Actions**, а не на Raspberry Pi,
 і тримати виправлення, потрібні для домашньої інсталяції.
-Стан на 29.09.2026 — перед висновками перевіряй живий репозиторій.
+Стан на 03.10.2026 — перед висновками перевіряй живий репозиторій.
 
 ## Ланцюжок репозиторіїв
 
@@ -60,6 +60,21 @@ Job потребує `permissions: actions: write` — без нього вик�
 і daily вийшли в одну годину, пуш STABLE програв (`cannot lock ref`), і образ з'явився лише з
 наступним запуском, через ~5 год. Тому пуш в обох job — це `git pull --rebase && git push` до
 трьох спроб. Конфліктів не буде: job змінюють різні теки.
+
+`Update DAILY` бере digest тегу `ghcr.io/maziggy/bambuddy:daily` запитом до маніфесту. З 03.10.2026
+апстрім публікує його як **OCI image index**. Коли в `Accept` лише Docker-формати, GHCR відповідає
+`404` (наче тегу немає), заголовка `docker-content-digest` немає, і job падає з
+`ERROR: Digest could not be fetched!`. Тому в запиті є обидва набори типів: Docker
+(`manifest.v2`, `manifest.list.v2`) і OCI (`image.index.v1`, `image.manifest.v1`). Якщо крок знову
+впаде з цією помилкою, спершу перевір формат вручну:
+
+```bash
+t=$(curl -s "https://ghcr.io/token?scope=repository:maziggy/bambuddy:pull" | jq -r .token)
+curl -sI -H "Authorization: Bearer $t" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+  https://ghcr.io/v2/maziggy/bambuddy/manifests/daily | grep -iE '^HTTP|content-type|digest'
+```
 
 Вручну збірку й далі можна запустити будь-коли:
 
@@ -143,5 +158,7 @@ ssh hassio@<ha-host> 'export SUPERVISOR_TOKEN=$(cat /run/s6/container_environmen
   `bambu_ftp` — без нього видалення файлу з картки не потрапить у запис (так і сталось 27.09;
   довелось добирати з повного логу). Після тесту вимкни `debug` і зупини запис:
   `sudo pkill -f "docker logs -f --since 0s app_cdf6b06[4]"`.
+- **Workflow впав, хоча ми нічого не міняли, — шукай зміну в апстрімі.** Так було з OCI-форматом
+  `daily` 03.10.2026. Спершу відтвори запит вручну, а тоді вже правь workflow.
 - Стан цього форку перевіряй фактами: `gh run list`, теги в GHCR, `version_latest` у Supervisor.
   Локальний `main` легко відстає — там щодня з'являються автоматичні коміти.
