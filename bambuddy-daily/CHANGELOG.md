@@ -1,4 +1,4 @@
-## 2026.10.22-f46891b9
+## 1.3.0b1-daily.20261022
 
 > [!NOTE]
 > This is a **daily beta build** (2026-10-22). It contains the latest fixes and improvements but may have undiscovered issues.
