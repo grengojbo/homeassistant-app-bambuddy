@@ -1,53 +1,105 @@
-name: Build BamBuddy image
+name: Build image
+
+# Manual only. Replaces the former build-stable.yml / build-daily.yml: one
+# dialog, channel picked in the dropdown. The run list still shows which
+# channel was built, because run-name carries it.
+#
+# Versions are bumped by auto-update.yml, which builds and commits on its
+# own. Use this workflow after changing the Dockerfile or rootfs without a
+# version change - nothing rebuilds automatically then. It publishes
+# packages, so it only runs on main (see only-main).
+
+run-name: ${{ inputs.run_tests && format('Build {0}', inputs.channel) || format('Build {0} (no validation)', inputs.channel) }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'bambuddy/**'
-      - '.github/workflows/build.yml'
   workflow_dispatch:
+    inputs:
+      channel:
+        description: "Which channel to build and push"
+        type: choice
+        options: [both, stable, daily]
+        default: both
+      run_tests:
+        description: "Run the validation first (lint and container tests)"
+        type: boolean
+        default: true
 
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/addon-bambuddy
+# One publishing run at a time, shared with auto-update.yml: two runs pushing
+# the same tags would race. A run waits; it is never cancelled mid-push.
+concurrency:
+  group: ghcr-publish
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build arm64 (Raspberry Pi 5)
-    runs-on: ubuntu-24.04-arm
+  # A run started from another branch stops here, before anything is built.
+  only-main:
+    name: Only on main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Refuse other branches
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Build image only runs on main, not on ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
+  validate-stable:
+    name: Validate Stable
+    needs: only-main
+    if: inputs.run_tests && (inputs.channel == 'both' || inputs.channel == 'stable')
+    uses: ./.github/workflows/_validate.yml
+    with:
+      context: bambuddy
+      smoke: true
+    permissions:
+      contents: read
+
+  build-stable:
+    name: Build Stable
+    needs: [only-main, validate-stable]
+    # always() keeps this reachable when the validation was skipped (run_tests
+    # off, or the other channel selected); a real validation failure still
+    # stops it, and so does the only-main guard.
+    if: >-
+      always()
+      && needs.only-main.result == 'success'
+      && (inputs.channel == 'both' || inputs.channel == 'stable')
+      && needs.validate-stable.result != 'failure'
+      && needs.validate-stable.result != 'cancelled'
+    uses: ./.github/workflows/_build.yml
+    with:
+      context: bambuddy
+      image: ghcr.io/spegeli/homeassistant-app-bambuddy
     permissions:
       contents: read
       packages: write
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
+  validate-daily:
+    name: Validate Daily
+    needs: only-main
+    if: inputs.run_tests && (inputs.channel == 'both' || inputs.channel == 'daily')
+    uses: ./.github/workflows/_validate.yml
+    with:
+      context: bambuddy-daily
+      smoke: true
+    permissions:
+      contents: read
 
-      - name: Read version from config.yaml
-        id: version
-        run: |
-          VERSION=$(grep '^version:' bambuddy/config.yaml | sed 's/.*"\(.*\)"/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building version: $VERSION"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: bambuddy
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+  build-daily:
+    name: Build Daily
+    needs: [only-main, validate-daily]
+    if: >-
+      always()
+      && needs.only-main.result == 'success'
+      && (inputs.channel == 'both' || inputs.channel == 'daily')
+      && needs.validate-daily.result != 'failure'
+      && needs.validate-daily.result != 'cancelled'
+    uses: ./.github/workflows/_build.yml
+    with:
+      context: bambuddy-daily
+      image: ghcr.io/spegeli/homeassistant-app-bambuddy-daily
+    permissions:
+      contents: read
+      packages: write

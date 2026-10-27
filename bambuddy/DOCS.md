@@ -1,10 +1,10 @@
-# Bambuddy - Documentation
+# BamBuddy - Documentation
 
 ## Configuration Options
 
 ### Trusted Frame Origins
 
-A list of URLs that are allowed to embed Bambuddy in an iframe. Required when using a **Webpage Card** or **Webpage Panel** inside the Home Assistant dashboard.
+A list of URLs that are allowed to embed BamBuddy in an iframe. Required when using a **Webpage Card** or **Webpage Panel** inside the Home Assistant dashboard.
 
 | Option | Type | Default |
 |--------|------|---------|
@@ -21,7 +21,7 @@ https://my-ha-instance.example.com
 
 Add every origin from which you access Home Assistant. If you access HA from multiple addresses (local IP, local hostname, external domain), add all of them.
 
-> **Note:** iFrame embedding via an HTTPS origin into an HTTP Bambuddy instance (port 8000) will be blocked by the browser due to mixed content policy. This approach works reliably on LAN with HTTP only.
+> **Note:** iFrame embedding via an HTTPS origin into an HTTP BamBuddy instance (port 8000) will be blocked by the browser due to mixed content policy. This approach works reliably on LAN with HTTP only.
 
 ---
 
@@ -64,7 +64,7 @@ In BamBuddy, go to **File Manager -> Link External Folder** and enter the path:
 
 ### Self-Signed CA Certificate
 
-If your Home Assistant instance uses a self-signed certificate (or a certificate signed by a private CA), BamBuddy will deny the HTTPS connection by default. This option lets you provide your own CA certificate so that BamBuddy can trust it.
+If BamBuddy has to reach an HTTPS service that uses a self-signed certificate or one signed by a private CA (for example a self-hosted Spoolman, a notification endpoint or your Home Assistant instance), it denies the connection by default. This option lets you provide your own CA certificate so that BamBuddy can trust it.
 
 | Option | Type | Default |
 |--------|------|---------|
@@ -73,22 +73,22 @@ If your Home Assistant instance uses a self-signed certificate (or a certificate
 
 **Steps:**
 
-1. Export your CA certificate as a `.crt` file (PEM format - the public CA certificate only, no private key).
+1. Export your CA certificate in PEM format - the public CA certificate only, no private key. The file name may end in `.crt` or `.pem`.
 2. Open the **File Editor** in Home Assistant and navigate to:
    `addon_configs` -> `[slug]_bambuddy`
-3. Upload or create the certificate file there (e.g., `custom_ca.crt`).
+3. Upload or create the certificate file there (e.g., `custom_ca.crt`). A subfolder works too (e.g., `certs/my_ca.pem`).
 4. In the add-on configuration, enable **Use System Trust Store** and set **CA Certificate Filename** to the filename you used in step 3.
 5. Restart the add-on.
 
 > **Note:** Only the CA certificate (public part) is required - not `fullchain.pem` and not a private key file.
 
-> **Note:** If the certificate file is not found at startup, BamBuddy will log a warning and start anyway - without the custom CA. Check the add-on log if HTTPS connections to your HA instance fail.
+> **Note:** If the certificate file is not found at startup or is not a PEM certificate, BamBuddy will log a warning and start anyway - without the custom CA. Check the add-on log if HTTPS connections to your HA instance fail.
 
 ---
 
 ### Debug Mode
 
-Enables verbose debug logging for Bambuddy. Useful when troubleshooting issues or reporting bugs.
+Enables verbose debug logging for BamBuddy. Useful when troubleshooting issues or reporting bugs.
 
 | Option | Type | Default |
 |--------|------|---------|
@@ -145,7 +145,22 @@ Close the slicer completely and reopen it. The Virtual Printer connection should
 
 ## Data Persistence
 
-All data (print archive, settings, logs) is stored persistently in the `addon_configs` directory, which is accessible via the **File Editor** in Home Assistant. Your data is safe across updates and restarts. When uninstalling, Home Assistant will ask whether to remove the app data as well - if you keep it, your data will still be there after a reinstall.
+All data (print archive, settings, logs) is stored persistently in the app's configuration folder (`addon_configs` -> `[slug]_bambuddy`), which is accessible via the **File Editor** in Home Assistant. Your data is safe across updates and restarts.
+
+**Uninstalling:** Home Assistant warns that the app's *private data folder* will be permanently deleted. BamBuddy stores its own data (database, print archive, logs) in the configuration folder instead, so this warning does not affect it. What decides is the switch **"Also delete the app's configuration folder (if used)"**:
+
+- **Off** (default): your BamBuddy data stays and is used again after a reinstall.
+- **On**: all BamBuddy data is permanently deleted.
+
+The app options from the **Configuration** tab are reset to their defaults on uninstall.
+
+---
+
+## Crashes and the Watchdog
+
+If BamBuddy crashes or is killed, for example by the system when memory runs out, the app stops and the log says why (e.g. `BamBuddy was killed by signal 9, halting app`). It does not restart itself inside the container.
+
+To have Home Assistant restart it automatically, turn on **Watchdog** on the app's **Info** tab. The watchdog also restarts BamBuddy when its health check stops answering, and it gives up after repeated failed restarts instead of looping forever.
 
 ---
 

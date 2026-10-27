@@ -1,0 +1,121 @@
+name: Validate (internal)
+
+# Reusable workflow (workflow_call), called by validate.yml, build.yml and
+# auto-update.yml. Two stages, both scoped to one channel:
+#   lint  - static checks, no Docker, a few seconds
+#   smoke - builds the image locally for amd64 and arm64 (each natively, never
+#           pushed) and boots it once per scenario against a mock Supervisor
+#
+# The image is deliberately built here instead of pulled: a failing test must
+# not leave a tag behind in GHCR, and the hourly auto-update would otherwise
+# publish a new broken image every hour until someone fixes it.
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        description: "Channel directory (bambuddy or bambuddy-daily)"
+        required: true
+        type: string
+      version:
+        description: "Version to build; defaults to the channel's config.yaml"
+        required: false
+        type: string
+      digest:
+        description: "Upstream base digest (daily); defaults to <context>/upstream.digest"
+        required: false
+        type: string
+      smoke:
+        description: "Run the container smoke tests as well"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Check config, translations and scripts
+        run: python3 tests/lint.py ${{ inputs.context }}
+
+      - name: Check shell syntax
+        run: |
+          bash -n ${{ inputs.context }}/rootfs/etc/services.d/bambuddy/run
+          bash -n ${{ inputs.context }}/rootfs/etc/services.d/bambuddy/finish
+          bash -n tests/smoke.sh
+          bash -n tests/image-checks.sh
+          bash -n .github/scripts/resolve-build-args.sh
+
+  container-tests:
+    name: Container test (${{ matrix.arch }})
+    needs: lint
+    if: inputs.smoke
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both architectures that ship, each built and booted natively: an
+        # arm64-only break (a wheel, the s6 tarball) must not reach Pi users.
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            ha_arch: amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            ha_arch: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Same resolution as _build.yml, so the test builds exactly what the
+      # build would push. Inputs go through env, never into the script text.
+      - name: Read version and upstream digest
+        id: version
+        env:
+          CONTEXT: ${{ inputs.context }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+        run: bash .github/scripts/resolve-build-args.sh "${CONTEXT}" "${VERSION}" "${DIGEST}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # No cache on purpose: a stale cache once produced an image tagged with a
+      # new version that still contained the old BamBuddy.
+      - name: Build image for ${{ matrix.arch }} (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          load: true
+          provenance: false
+          tags: bambuddy:test
+          # digest_arg is empty for stable; build-push-action drops empty lines.
+          build-args: |
+            BAMBUDDY_VERSION=${{ steps.version.outputs.version }}
+            BUILD_ARCH=${{ matrix.ha_arch }}
+            ${{ steps.version.outputs.digest_arg }}
+
+      - name: Check image contents
+        env:
+          CONTEXT: ${{ inputs.context }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash tests/image-checks.sh "${CONTEXT}" bambuddy:test "${VERSION}"
+
+      - name: Start app in every test scenario
+        run: bash tests/smoke.sh bambuddy:test

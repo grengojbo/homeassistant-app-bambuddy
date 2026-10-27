@@ -224,4 +224,3 @@ docker pull maziggy/bambuddy:daily
 ---
 
 _Changelog truncated — see the full [CHANGELOG.md](https://github.com/maziggy/bambuddy/blob/main/CHANGELOG.md) for the complete list._
-

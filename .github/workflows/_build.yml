@@ -1,0 +1,195 @@
+name: Build image (internal)
+
+# Reusable workflow (workflow_call): builds each architecture natively,
+# pushes it under its own tag (<version>-amd64, <version>-arm64) and merges
+# both by digest into the multi-arch <version> / latest tag. Not runnable on
+# its own - called by build.yml and by auto-update.yml.
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+      digest:
+        description: "Upstream base digest (daily); defaults to <context>/upstream.digest"
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  prepare:
+    name: Read version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Only reads the repo. Without this block the job would inherit the
+    # caller's packages: write.
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      digest_arg: ${{ steps.v.outputs.digest_arg }}
+      description: ${{ steps.v.outputs.description }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Inputs go through env, never into the script text.
+      - name: Read version and upstream digest
+        id: v
+        env:
+          CONTEXT: ${{ inputs.context }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+        run: bash .github/scripts/resolve-build-args.sh "${CONTEXT}" "${VERSION}" "${DIGEST}"
+
+  images:
+    name: Image ${{ matrix.tag_arch }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # ha_arch is Home Assistant's name (io.hass.arch label, config.yaml);
+        # tag_arch is Docker's name, used in the per-architecture tag because
+        # that is what GHCR shows next to it (linux/arm64) and what upstream
+        # uses (daily-arm64).
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            ha_arch: amd64
+            tag_arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            ha_arch: aarch64
+            tag_arch: arm64
+
+    steps:
+      - name: Name the digest artifact
+        run: |
+          echo "PLATFORM_PAIR=$(echo '${{ matrix.platform }}' | tr / -)" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Each architecture is pushed under its own tag (<version>-amd64,
+      # <version>-arm64). The merge job still combines them by digest into the
+      # multi-arch <version> / latest tag that Home Assistant pulls. Tagging the
+      # children makes the package list readable and keeps them safe from any
+      # "delete untagged versions" cleanup, which would otherwise break the
+      # multi-arch tag that references them.
+      - name: Build and push ${{ matrix.tag_arch }} image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          push: true
+          tags: ${{ inputs.image }}:${{ needs.prepare.outputs.version }}-${{ matrix.tag_arch }}
+          # GHCR shows the description from the manifest annotation, not from
+          # the Dockerfile label (see resolve-build-args.sh).
+          annotations: |
+            manifest:org.opencontainers.image.description=${{ needs.prepare.outputs.description }} · ${{ matrix.tag_arch }} image
+          # digest_arg is empty for stable; build-push-action drops empty lines.
+          build-args: |
+            BAMBUDDY_VERSION=${{ needs.prepare.outputs.version }}
+            BUILD_ARCH=${{ matrix.ha_arch }}
+            ${{ needs.prepare.outputs.digest_arg }}
+
+      - name: Save image digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      # Artifact names carry the channel. Artifacts are shared by the whole
+      # workflow run, and build.yml ("both") and auto-update.yml can build both
+      # channels in one run - with plain "digests-linux-amd64" each merge job
+      # collected the other channel's digests too and failed with "not found".
+      - name: Hand digest to publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ inputs.context }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish version tag
+    needs: [prepare, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # "-linux-" right after the channel keeps "bambuddy" from also matching
+      # "bambuddy-daily".
+      - name: Collect both digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ inputs.context }}-linux-*
+          merge-multiple: true
+
+      - name: Check both architectures are there
+        working-directory: /tmp/digests
+        run: |
+          # Exactly one digest per architecture, or the index would be wrong.
+          count=$(find . -maxdepth 1 -type f | wc -l)
+          if [ "${count}" != "2" ]; then
+            echo "::error::expected 2 digests (amd64 + arm64) for ${{ inputs.context }}, found ${count}"
+            ls -la
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Publish version and latest tags
+        working-directory: /tmp/digests
+        env:
+          # Via env, not inline: the text contains colons and "://".
+          DESCRIPTION: ${{ needs.prepare.outputs.description }}
+        run: |
+          # The word splitting is the point here: one file per architecture
+          # digest, expanded into separate arguments for imagetools create.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.description=${DESCRIPTION}" \
+            -t ${{ inputs.image }}:${{ needs.prepare.outputs.version }} \
+            -t ${{ inputs.image }}:latest \
+            $(printf '${{ inputs.image }}@sha256:%s ' *)
+
+      - name: Show published tag
+        run: docker buildx imagetools inspect ${{ inputs.image }}:${{ needs.prepare.outputs.version }}

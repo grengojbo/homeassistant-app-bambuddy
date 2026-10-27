@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: BamBuddy bug or feature request
+    url: https://github.com/maziggy/bambuddy/issues
+    about: Problems or ideas concerning BamBuddy itself (not the Home Assistant packaging) belong in the upstream project.
+  - name: BamBuddy documentation
+    url: https://wiki.bambuddy.cool
+    about: Setup guides, features, virtual printer ports and FAQ for BamBuddy.
+  - name: Home Assistant Community Forum
+    url: https://community.home-assistant.io
+    about: General Home Assistant questions unrelated to this app.
+  - name: Report a security vulnerability
+    url: https://github.com/Spegeli/homeassistant-app-bambuddy/security/advisories/new
+    about: Found a vulnerability? Report it privately here – never in a public issue.
