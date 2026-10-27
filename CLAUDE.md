@@ -17,6 +17,9 @@
 > - Workflow — апстрімні (`auto-update.yml`, `build.yml`, `_build.yml`, `_validate.yml`),
 >   правки форку позначені коментарем `# Fork:`. Daily у форку не збирається
 >   (`github.repository_owner == 'Spegeli'`), канал лишається як у Spegeli.
+> - Issues у форку вимкнені. Версію, що не пройшла валідацію чи збірку, блокує
+>   тег `auto-update-blocked/stable-<версія>` замість issue; щогодинний ран її
+>   пропускає, доки тег є. Розблокувати: `git push --delete origin <тег>`.
 > - `arch` — обидві, як в апстрімі: збираються amd64 і arm64.
 > - Remote `upstream` = Spegeli тепер налаштований. Синк: `git merge upstream/main`
 >   у гілці, конфлікти — на користь апстріму, потім перевірити всі `# Fork:` місця
