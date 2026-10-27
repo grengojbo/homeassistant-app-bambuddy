@@ -9,8 +9,12 @@
 #
 # BAMBUDDY_VERSION has NO default — injected at build time via --build-arg from
 # bambuddy/config.yaml (version:). config.yaml is the single source of truth.
+#
+# Fork: the base is the grengojbo/bambuddy fork image (tags <upstream>-jbo.<n>).
+# Its /app/.git/HEAD names `master`, so SpoolBuddy's remote update pulls the
+# fork's master (MFRC522/HX711 drivers) instead of upstream main.
 ARG BAMBUDDY_VERSION
-FROM ghcr.io/maziggy/bambuddy:${BAMBUDDY_VERSION}
+FROM ghcr.io/grengojbo/bambuddy:${BAMBUDDY_VERSION}
 
 # All build-args in one place. S6_OVERLAY_VERSION and BASHIO_VERSION are pinned
 # here and bumped by hand; BAMBUDDY_VERSION and BUILD_ARCH come from the build
@@ -24,10 +28,10 @@ ARG BUILD_ARCH
 
 LABEL org.opencontainers.image.title="Home Assistant App: BamBuddy (Stable)"
 LABEL org.opencontainers.image.description="A powerful, self-hosted command center for Bambu Lab — from one A1 to an entire print farm. Your Printers. No Cloud. Your Rules."
-LABEL org.opencontainers.image.source="https://github.com/Spegeli/homeassistant-app-bambuddy"
+LABEL org.opencontainers.image.source="https://github.com/grengojbo/homeassistant-app-bambuddy"
 LABEL org.opencontainers.image.licenses="MIT AND AGPL-3.0-only"
 # Which upstream stand is inside this image.
-LABEL org.opencontainers.image.base.name="ghcr.io/maziggy/bambuddy:${BAMBUDDY_VERSION}"
+LABEL org.opencontainers.image.base.name="ghcr.io/grengojbo/bambuddy:${BAMBUDDY_VERSION}"
 
 # Supervisor metadata (required when not using the HA builder). It reads
 # io.hass.version as the installed image version.

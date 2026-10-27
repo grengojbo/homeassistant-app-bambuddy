@@ -71,7 +71,7 @@ jobs:
     uses: ./.github/workflows/_build.yml
     with:
       context: bambuddy
-      image: ghcr.io/spegeli/homeassistant-app-bambuddy
+      image: ghcr.io/grengojbo/addon-bambuddy
     permissions:
       contents: read
       packages: write
@@ -79,7 +79,8 @@ jobs:
   validate-daily:
     name: Validate Daily
     needs: only-main
-    if: inputs.run_tests && (inputs.channel == 'both' || inputs.channel == 'daily')
+    # Fork: Daily is not built here, see check-daily in auto-update.yml.
+    if: github.repository_owner == 'Spegeli' && inputs.run_tests && (inputs.channel == 'both' || inputs.channel == 'daily')
     uses: ./.github/workflows/_validate.yml
     with:
       context: bambuddy-daily
@@ -92,6 +93,7 @@ jobs:
     needs: [only-main, validate-daily]
     if: >-
       always()
+      && github.repository_owner == 'Spegeli'
       && needs.only-main.result == 'success'
       && (inputs.channel == 'both' || inputs.channel == 'daily')
       && needs.validate-daily.result != 'failure'

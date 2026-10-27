@@ -54,7 +54,8 @@ fi
 # no markdown), so the description points to it instead. GHCR renders the
 # field as plain text and does not turn URLs into links, so the address is
 # given without https:// and the parts are separated by " · " to be skimmable.
-NOTES="github.com/maziggy/bambuddy/releases/tag/v${VERSION}"
+# Fork: a -jbo version points at the upstream release it is based on.
+NOTES="github.com/maziggy/bambuddy/releases/tag/v${VERSION%%-jbo.*}"
 if [ -n "${DIGEST}" ]; then
   DESCRIPTION="BamBuddy ${VERSION} · Daily · Home Assistant app · upstream ${DIGEST:0:19} · Release notes: ${NOTES}"
 else

@@ -62,24 +62,19 @@ jobs:
         with:
           ref: ${{ github.ref }}
 
-      - name: Get latest stable version from GitHub Releases
+      # Fork: Stable follows the grengojbo/bambuddy fork, not maziggy releases.
+      # Its release tags are v<upstream>-jbo.<n>; betas (1.2.6b1-jbo.1) are
+      # skipped, same rule as the fork's docker-ghcr.yml uses for ':latest'.
+      - name: Get latest stable version from the fork's release tags
         id: get_version
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          RAW=$(curl -s --retry 3 --retry-delay 5 --retry-all-errors \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/maziggy/bambuddy/releases")
-
-          if ! echo "$RAW" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            echo "::warning::GitHub API did not return a release array (rate limit / transient). Skipping this run."
+          if ! TAGS=$(git ls-remote --tags --refs https://github.com/grengojbo/bambuddy.git 'v*-jbo.*'); then
+            echo "::warning::Could not list grengojbo/bambuddy tags (transient). Skipping this run."
             echo "latest=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          LATEST=$(echo "$RAW" | jq -r '[.[] | select(.prerelease == false) | select(.tag_name | ltrimstr("v") | test("^[0-9]+\\.[0-9]+(\\.[0-9]+)*$"))] | sort_by(.published_at) | reverse | first | .tag_name // empty' | sed 's/^v//')
+          LATEST=$(echo "$TAGS" | sed 's|.*refs/tags/v||' | grep -E '^[0-9]+(\.[0-9]+)+-jbo\.[0-9]+$' | sort -V | tail -n1 || true)
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
           echo "Found version: $LATEST"
 
@@ -105,11 +100,11 @@ jobs:
           # both architectures, else the test fails at FROM for a version that
           # is fine.
           TOKEN=$(curl -s --retry 3 --retry-delay 5 --retry-all-errors \
-            "https://ghcr.io/token?scope=repository:maziggy/bambuddy:pull" | jq -r '.token')
+            "https://ghcr.io/token?scope=repository:grengojbo/bambuddy:pull" | jq -r '.token')
           PLATFORMS=$(curl -s --retry 3 --retry-delay 5 --retry-all-errors -H "Authorization: Bearer ${TOKEN}" \
             -H "Accept: application/vnd.oci.image.index.v1+json" \
             -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
-            "https://ghcr.io/v2/maziggy/bambuddy/manifests/${LATEST}" \
+            "https://ghcr.io/v2/grengojbo/bambuddy/manifests/${LATEST}" \
             | jq -r '[.manifests[]?.platform | "\(.os)/\(.architecture)"] | join(" ")' 2>/dev/null || true)
           if grep -qw "linux/amd64" <<<"${PLATFORMS}" && grep -qw "linux/arm64" <<<"${PLATFORMS}"; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -159,7 +154,7 @@ jobs:
     uses: ./.github/workflows/_build.yml
     with:
       context: bambuddy
-      image: ghcr.io/spegeli/homeassistant-app-bambuddy
+      image: ghcr.io/grengojbo/addon-bambuddy
       version: ${{ needs.check-stable.outputs.version }}
 
   commit-stable:
@@ -192,11 +187,13 @@ jobs:
           # The release notes go through a file: as a single environment variable
           # they already come close to Linux's 128 KiB limit per variable.
           NOTES="${RUNNER_TEMP}/release-notes.md"
+          # Fork: the -jbo tags have no GitHub release; use the notes of the
+          # upstream release they are based on.
           curl -s --retry 3 --retry-delay 5 --retry-all-errors \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/maziggy/bambuddy/releases/tags/v${VERSION}" | jq -r '.body // empty' > "${NOTES}"
+            "https://api.github.com/repos/maziggy/bambuddy/releases/tags/v${VERSION%%-jbo.*}" | jq -r '.body // empty' > "${NOTES}"
           sed -i 's/^version: ".*"/version: "${{ needs.check-stable.outputs.version }}"/' bambuddy/config.yaml
           # Fail loudly if the bump did not land (e.g. the version: line was
           # reformatted and sed no longer matches). Silently committing nothing
@@ -225,7 +222,7 @@ jobs:
 
           # Split only at real version headings ("## 1.2.5.5"), not at headings
           # inside the upstream release notes ("### Added", ...).
-          heading = re.compile(r"^## \d+(?:\.\d+)+[ \t]*$", re.MULTILINE)
+          heading = re.compile(r"^## \d+(?:\.\d+)+(?:-jbo\.\d+)?[ \t]*$", re.MULTILINE)
           starts = [m.start() for m in heading.finditer(old)]
           sections = [old[s:e].strip("\n") for s, e in zip(starts, starts[1:] + [len(old)])]
           sections = [s for s in sections if s.split("\n", 1)[0].strip() != f"## {ver}"]
@@ -263,7 +260,9 @@ jobs:
   remind-stable:
     name: Remind to review Stable
     needs: [check-stable, commit-stable]
-    if: needs.commit-stable.result == 'success'
+    # Fork: off. It compares maziggy release tags, which -jbo versions never
+    # match; upstream releases are reviewed when merging them into the fork.
+    if: needs.commit-stable.result == 'success' && github.repository_owner == 'Spegeli'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -383,6 +382,9 @@ jobs:
   check-daily:
     name: Check for new Daily
     needs: only-main
+    # Fork: Daily is not built here (it would push to Spegeli's package). The
+    # bambuddy-daily channel keeps upstream's config.yaml and image as merged.
+    if: github.repository_owner == 'Spegeli'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

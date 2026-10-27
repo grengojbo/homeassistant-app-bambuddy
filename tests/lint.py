@@ -65,7 +65,11 @@ def check_config(channel):
     if config.get("slug") != expected_slug:
         fail(name, "slug is '{}', expected '{}'".format(config.get("slug"), expected_slug))
 
-    expected_image = "ghcr.io/spegeli/homeassistant-app-{}".format(name)
+    # Fork: Stable is published as grengojbo/addon-bambuddy; Daily keeps
+    # upstream's image (not built in the fork).
+    expected_image = {
+        "bambuddy": "ghcr.io/grengojbo/addon-bambuddy",
+    }.get(name, "ghcr.io/spegeli/homeassistant-app-{}".format(name))
     if config.get("image") != expected_image:
         fail(name, "image is '{}', expected '{}'".format(config.get("image"), expected_image))
 

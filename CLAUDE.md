@@ -2,18 +2,34 @@
 
 Форк репозиторію add-on BamBuddy. Мета: **збирати образ у GitHub Actions**, а не на Raspberry Pi,
 і тримати виправлення, потрібні для домашньої інсталяції.
-Стан на 03.10.2026 — перед висновками перевіряй живий репозиторій.
+Стан на 27.10.2026 — перед висновками перевіряй живий репозиторій.
+
+> **27.10.2026: синк зі Spegeli і перехід на образ форку `bambuddy`.** Розділи нижче
+> про `update-versions.yml`, Alpine-Dockerfile і `arch: [aarch64]` — історія. Зараз:
+>
+> - База stable — `ghcr.io/grengojbo/bambuddy:<версія>` (форк застосунку), не `maziggy`.
+>   У ньому `/app/.git/HEAD` = `master`, тож оновлення SpoolBuddy з UI тягне `master`
+>   форку (драйвери MFRC522/HX711), а не upstream `main`.
+> - Версія stable — тег форку без `v`: `1.2.5.7-jbo.1`. Нова версія = новий тег
+>   `v*-jbo.*` у `grengojbo/bambuddy`; `auto-update.yml` (щогодини) його підхоплює,
+>   коли образ має amd64+arm64, валідує, збирає `ghcr.io/grengojbo/addon-bambuddy`
+>   і комітить `config.yaml`. Беті (`…b1-jbo.N`) пропускаються.
+> - Workflow — апстрімні (`auto-update.yml`, `build.yml`, `_build.yml`, `_validate.yml`),
+>   правки форку позначені коментарем `# Fork:`. Daily у форку не збирається
+>   (`github.repository_owner == 'Spegeli'`), канал лишається як у Spegeli.
+> - `arch` — обидві, як в апстрімі: збираються amd64 і arm64.
+> - Remote `upstream` = Spegeli тепер налаштований. Синк: `git merge upstream/main`
+>   у гілці, конфлікти — на користь апстріму, потім перевірити всі `# Fork:` місця
+>   і `image:`/`version:`/`url:` у `bambuddy/config.yaml`.
 
 ## Ланцюжок репозиторіїв
 
 | Роль | Репозиторій |
 |---|---|
 | Застосунок BamBuddy | `maziggy/bambuddy` (issues по самій програмі — сюди) |
+| Форк застосунку (база образу) | `grengojbo/bambuddy`, теги `v*-jbo.*` → `ghcr.io/grengojbo/bambuddy` |
 | Апстрім add-on | `Spegeli/homeassistant-app-bambuddy` (Dockerfile, config.yaml) |
 | Цей форк | `grengojbo/homeassistant-app-bambuddy` → `origin` |
-
-`upstream` як git-remote **не налаштований** — є лише `origin`. Синхронізація йде через
-власний workflow `update-versions.yml`, який тягне версії з релізів `maziggy/bambuddy`.
 
 ## Структура
 
