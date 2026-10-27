@@ -122,7 +122,20 @@ jobs:
           # A failed test run opens an issue naming the version. Without this
           # check the hourly cron would rebuild and retest the same broken
           # version every hour. Closing the issue releases the version again.
-          TITLE="Auto-update blocked: stable ${{ steps.get_version.outputs.latest }}"
+          VERSION="${{ steps.get_version.outputs.latest }}"
+          # Fork: issues are off in the fork, so the block is a tag instead
+          # (see block-stable). Deleting the tag releases the version again.
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .has_issues)" != "true" ]; then
+            TAG="auto-update-blocked/stable-${VERSION}"
+            if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+              echo "::notice::Skipping stable ${VERSION} - tag ${TAG} still blocks it"
+              echo "blocked=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "blocked=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          TITLE="Auto-update blocked: stable ${VERSION}"
           FOUND=$(gh issue list --state open --search "in:title \"${TITLE}\"" --json title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | length")
           if [ "${FOUND}" != "0" ]; then
@@ -338,6 +351,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       issues: write
+      # Fork: the blocking tag, used where issues are off.
+      contents: write
     steps:
       - name: Open a blocking issue
         env:
@@ -350,6 +365,15 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OWNER: ${{ github.repository_owner }}
         run: |
+          # Fork: issues are off in the fork. A tag on the run's commit blocks
+          # the version instead; check-stable looks for it. The run itself
+          # stays failed, which is the notification.
+          if [ "$(gh api "repos/${GH_REPO}" --jq .has_issues)" != "true" ]; then
+            TAG="auto-update-blocked/stable-${VERSION}"
+            gh api "repos/${GH_REPO}/git/refs" -f ref="refs/tags/${TAG}" -f sha="${GITHUB_SHA}" >/dev/null
+            echo "::error::Stable ${VERSION} blocked by tag ${TAG}. Failed run: ${RUN_URL}. Delete the tag once the cause is fixed: git push --delete origin ${TAG}"
+            exit 0
+          fi
           TITLE="Auto-update blocked: stable ${VERSION}"
           if [ "${VALIDATE_RESULT}" = "failure" ]; then
             STAGE="the validation (lint and container tests) failed before anything was pushed to GHCR or committed to \`config.yaml\`."
